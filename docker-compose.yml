@@ -6,13 +6,21 @@ services:
     ports:
       - "3000:3000"
     environment:
-      PORT: 3000
-      DATABASE_URL: postgres://postgres:postgres@db:5432/app
-      REDIS_URL: redis://queue:6379
-      NIGHTLY_DIGEST_CRON: "0 0 * * *"
+      PORT: ${PORT}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      NIGHTLY_DIGEST_CRON: ${NIGHTLY_DIGEST_CRON}
     depends_on:
-      - db
-      - queue
+      db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || curl -fsS http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   worker:
@@ -20,11 +28,19 @@ services:
     container_name: worker
     command: npm run worker
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/app
-      REDIS_URL: redis://queue:6379
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
     depends_on:
-      - db
-      - queue
+      db:
+        condition: service_healthy
+      queue:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps -ef | grep node | grep -v grep > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
 
   db:
@@ -40,6 +56,12 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./src/models/jobs.sql:/docker-entrypoint-initdb.d/01-jobs.sql
       - ./src/models/job_activity_logs.sql:/docker-entrypoint-initdb.d/02-job-activity-logs.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   queue:
@@ -50,6 +72,12 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - queuedata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
