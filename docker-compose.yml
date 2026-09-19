@@ -1,0 +1,57 @@
+services:
+  app:
+    build: .
+    container_name: app
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+      REDIS_URL: redis://queue:6379
+      NIGHTLY_DIGEST_CRON: "0 0 * * *"
+    depends_on:
+      - db
+      - queue
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: worker
+    command: npm run worker
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+      REDIS_URL: redis://queue:6379
+    depends_on:
+      - db
+      - queue
+    restart: unless-stopped
+
+  db:
+    image: postgres:17
+    container_name: db
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./src/models/jobs.sql:/docker-entrypoint-initdb.d/01-jobs.sql
+      - ./src/models/job_activity_logs.sql:/docker-entrypoint-initdb.d/02-job-activity-logs.sql
+    restart: unless-stopped
+
+  queue:
+    image: redis:7-alpine
+    container_name: queue
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - queuedata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  queuedata:
