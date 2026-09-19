@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
-import { pool, queue } from './shared/config';
+import { pool } from './shared/config';
+import { digestQueue } from '../../queue';
 
 const validatePayload = (body: any) => {
   const type = typeof body?.type === 'string' ? body.type.trim() : '';
@@ -28,11 +29,6 @@ export const triggerJobController = async (req: Request, res: Response) => {
       throw error;
     }
 
-    if (!queue) {
-      const error = new Error('REDIS_URL is not configured');
-      (error as any).statusCode = 500;
-      throw error;
-    }
 
     const jobId = randomUUID();
     const createdAt = new Date();
@@ -53,7 +49,7 @@ export const triggerJobController = async (req: Request, res: Response) => {
       [randomUUID(), jobId, 'pending', 'Job created and queued for processing', createdAt]
     );
 
-    await queue.add('nightly_digest', {
+    await digestQueue.add('nightly_digest', {
       jobId,
       payload,
     });
